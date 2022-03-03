@@ -1,0 +1,3 @@
+dir = "./"
+templates = ["templates/**/*.xhtml"]
+pages = ["index.html"]
