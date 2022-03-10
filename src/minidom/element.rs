@@ -337,10 +337,8 @@ impl Element {
         Event::Eof => {
           return Err(Error::EndOfDocument);
         }
-        Event::Comment { .. } => {
-          return Err(Error::NoComments);
-        }
         Event::Text { .. }
+        | Event::Comment { .. }
         | Event::End { .. }
         | Event::CData { .. }
         | Event::Decl { .. }
@@ -429,10 +427,16 @@ impl Element {
             current_elem.append_text_node(text);
           }
         }
+        Event::Comment(s) => {
+          let text = s.unescape_and_decode(reader)?;
+          if !text.is_empty() {
+            let current_elem = stack.last_mut().unwrap();
+            current_elem.append_comment_node(text);
+          }
+        }
         Event::Eof => {
           break;
         }
-        Event::Comment(_) => return Err(Error::NoComments),
         Event::Decl { .. } | Event::PI { .. } | Event::DocType { .. } => (),
       }
     }
@@ -700,6 +704,11 @@ impl Element {
   /// ```
   pub fn append_text_node<S: Into<String>>(&mut self, child: S) {
     self.children.push(Node::Text(child.into()));
+  }
+
+  /// Appends a comment node to an `Element`.
+  pub fn append_comment_node<S: Into<String>>(&mut self, child: S) {
+    self.children.push(Node::Comment(child.into()));
   }
 
   /// Appends a node to an `Element`.

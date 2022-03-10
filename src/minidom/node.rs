@@ -24,6 +24,8 @@ pub enum Node {
     Element(Element),
     /// A text node.
     Text(String),
+    /// A text node.
+    Comment(String),
 }
 
 impl Node {
@@ -45,6 +47,7 @@ impl Node {
         match *self {
             Node::Element(ref e) => Some(e),
             Node::Text(_) => None,
+            Node::Comment(_) => None,
         }
     }
 
@@ -66,6 +69,7 @@ impl Node {
         match *self {
             Node::Element(ref mut e) => Some(e),
             Node::Text(_) => None,
+            Node::Comment(_) => None,
         }
     }
 
@@ -87,6 +91,7 @@ impl Node {
         match self {
             Node::Element(e) => Some(e),
             Node::Text(_) => None,
+            Node::Comment(_) => None,
         }
     }
 
@@ -108,6 +113,7 @@ impl Node {
         match *self {
             Node::Element(_) => None,
             Node::Text(ref s) => Some(s),
+            Node::Comment(_) => None,
         }
     }
 
@@ -135,6 +141,7 @@ impl Node {
         match *self {
             Node::Element(_) => None,
             Node::Text(ref mut s) => Some(s),
+            Node::Comment(_) => None,
         }
     }
 
@@ -156,6 +163,7 @@ impl Node {
         match self {
             Node::Element(_) => None,
             Node::Text(s) => Some(s),
+            Node::Comment(_) => None,
         }
     }
 
@@ -169,6 +177,9 @@ impl Node {
             Node::Element(ref elmt) => elmt.write_to_inner(writer, prefixes)?,
             Node::Text(ref s) => {
                 writer.write_event(Event::Text(BytesText::from_plain_str(s)))?;
+            }
+            Node::Comment(ref c) => {
+                writer.write_event(Event::Comment(BytesText::from_plain_str(c)))?;
             }
         }
 

@@ -40,9 +40,6 @@ pub enum Error {
     /// (be it None or Some(_)).
     InvalidPrefix,
 
-    /// An error which is returned when a comment is to be parsed by minidom
-    NoComments,
-
     /// An error which is returned when a prefixed is defined twice
     DuplicatePrefix,
 }
@@ -57,7 +54,6 @@ impl StdError for Error {
             Error::InvalidElementClosed => None,
             Error::InvalidElement => None,
             Error::InvalidPrefix => None,
-            Error::NoComments => None,
             Error::DuplicatePrefix => None,
         }
     }
@@ -77,10 +73,6 @@ impl std::fmt::Display for Error {
             }
             Error::InvalidElement => write!(fmt, "the XML element is invalid"),
             Error::InvalidPrefix => write!(fmt, "the prefix is invalid"),
-            Error::NoComments => write!(
-                fmt,
-                "a comment has been found even though comments are forbidden"
-            ),
             Error::DuplicatePrefix => write!(fmt, "the prefix is already defined"),
         }
     }

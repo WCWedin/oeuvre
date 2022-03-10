@@ -11,7 +11,6 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use super::element::Element;
-use super::error::Error;
 
 use quick_xml::Reader;
 
@@ -427,12 +426,10 @@ fn namespace_inherited_prefixed2() {
 }
 
 #[test]
-fn fail_comments() {
-  let elem: Result<Element, Error> = "<foo xmlns='ns1'><!-- bar --></foo>".parse();
-  match elem {
-    Err(Error::NoComments) => (),
-    _ => panic!(),
-  };
+fn comments_written() {
+  let text = "<foo xmlns=\"ns1\"><!-- bar --></foo>";
+  let elem : Element = "<foo xmlns='ns1'><!-- bar --></foo>".parse().unwrap();
+  assert_eq!(text, String::from(&elem));
 }
 
 #[test]
