@@ -1,7 +1,10 @@
-use anyhow::{bail, Context, Result};
+mod minidom;
+
+use anyhow::{bail, Result};
 use glob::glob;
 use itertools::Itertools;
 use minidom::Element;
+use path_clean::PathClean;
 use serde_derive::Deserialize;
 use std::collections::HashMap;
 use std::env;
@@ -11,15 +14,60 @@ use std::path::PathBuf;
 
 #[derive(Deserialize)]
 struct Config {
-  dir: Option<String>,
-  output_dir: Option<String>,
+  #[serde(default = "Config::default_dir")]
+  dir: String,
+  #[serde(default = "Config::default_output_dir")]
+  output_dir: String,
+  #[serde(default = "Config::default_exclude")]
+  exclude: Vec<String>,
+  #[serde(default = "Config::default_templates")]
   templates: Vec<String>,
+  #[serde(default = "Config::default_pages")]
   pages: Vec<String>,
+}
+
+impl Config {
+  fn default_dir() -> String {
+    "./".to_string()
+  }
+  fn default_output_dir() -> String {
+    "output/".to_string()
+  }
+  fn default_exclude() -> Vec<String> {
+    Vec::new()
+  }
+  fn default_templates() -> Vec<String> {
+    ["templates/**/*.html".to_string()].to_vec()
+  }
+  fn default_pages() -> Vec<String> {
+    ["**/*.html".to_string()].to_vec()
+  }
 }
 
 struct Template {
   element: Element,
   name: String,
+}
+
+impl Template {
+  pub fn new(element: Element, templates: &HashMap<String, Template>) -> Result<Template> {
+    let name = match element.attr("oeuvre-name") {
+      None => {
+        bail!("Template requires a root element with an oeuvre-name attribute");
+      }
+      Some(attr_value) => attr_value,
+    }
+    .to_string();
+
+    if templates.contains_key(&name) {
+      bail!(
+      "Template has the oeuvre-name attribute value {}, which is already in use by another template",
+      name
+    );
+    }
+
+    Ok(Template { element, name })
+  }
 }
 
 struct Page {
@@ -32,10 +80,7 @@ impl Page {
   pub fn new(element: Element, path: &Path) -> Result<Page> {
     let template = match element.attr("oeuvre-template") {
       Some(attr_value) => attr_value,
-      None => bail!(
-        "-- {} requires a root element with an oeuvre-template attribute",
-        path.display()
-      ),
+      None => bail!("Page requires a root element with an oeuvre-template attribute",),
     }
     .to_string();
 
@@ -63,39 +108,45 @@ fn main() -> Result<()> {
   let config_dir = config_path.parent().unwrap();
 
   println!("Reading config file {}", config_path.display());
-  let config = read_config_file(&config_path)?;
+  let config = load_config(&config_path)?;
 
   println!("Looking for root directory");
-  let root_dir = find_root_dir(config_dir, &config.dir.unwrap_or_default())?;
+  let root_dir = find_root_dir(config_dir, &config.dir)?;
 
   println!("Using root directory {}", root_dir.display());
-  env::set_current_dir(&root_dir).context(format!(
-    "Could not change to directory {}",
-    root_dir.display()
-  ))?;
+  use_dir(&root_dir)?;
 
   println!("Looking for output directory");
-  let output_dir = find_output_dir(config_dir, &config.output_dir)?;
+  let output_dir = create_output_dir(config_dir, &config.output_dir)?;
+
+  // Set up excluded paths collection.
+  let mut exclude = Vec::<PathBuf>::new();
+  exclude = expand_glob(&config.exclude, &mut exclude);
+  let ouput_glob = format!("{}{}", &config.output_dir, "/**/*");
+  let mut output_files = expand_glob(&[ouput_glob], &mut exclude);
+  exclude.append(&mut output_files);
+  exclude.sort();
 
   println!("Looking for templates {:?}", config.templates);
-  let template_paths = find_files(&config.templates);
+  let template_paths: Vec<PathBuf> = expand_glob(&config.templates, &mut exclude);
+  exclude.append(&mut template_paths.clone());
 
   println!("Reading templates");
-  let templates = read_template_files(&template_paths);
+  let templates = load_templates(&template_paths);
 
   println!("Looking for pages {:?}", config.pages);
-  let page_paths = find_files(&config.pages);
+  let page_paths = expand_glob(&config.pages, &mut exclude);
 
   println!("Reading pages");
-  let pages = read_page_files(&page_paths);
+  let pages = load_pages(&page_paths);
 
   println!("Writing pages");
   write_pages(&pages, &templates, &output_dir);
-  
+
   Ok(())
 }
 
-/// Finds the canonical path to the config file in one of the following places or otherwise returns an `Err`:
+/// Finds the root path to the config file in one of the following places or otherwise returns an `Err`:
 /// - `input_path` if `input_path` corresponds to a file
 /// - `input_path`/site.toml if `input_path` corresponds to a directory
 /// - `"./site.toml"` if `input_path` is `None` and `"./site.toml"` corresponds to a file
@@ -103,6 +154,7 @@ fn find_config_file(input_path: &Option<String>) -> Result<PathBuf> {
   const DEFAULT_FILE_NAME: &str = "site.toml";
 
   let mut path = PathBuf::new();
+  path.push(env::current_dir()?);
 
   match input_path {
     None => path.push(DEFAULT_FILE_NAME),
@@ -115,26 +167,31 @@ fn find_config_file(input_path: &Option<String>) -> Result<PathBuf> {
   };
 
   if path.is_file() {
-    Ok(path.canonicalize()?)
+    Ok(path.clean())
   } else {
     bail!("{} not found.", path.display())
   }
 }
 
-fn read_config_file(path: &Path) -> Result<Config> {
-  let config_file =
-    fs::read_to_string(&path).context(format!("{} could not be read", path.display()))?;
-  toml::from_str::<Config>(&config_file).context(format!(
-    "{} could not be parsed as a config file",
-    path.display()
-  ))
+fn load_config(path: &Path) -> Result<Config> {
+  let config_file = match fs::read_to_string(&path) {
+    Ok(text) => text,
+    Err(err) => bail!("{} could not be opened. Cause: {}", path.display(), err),
+  };
+
+  match toml::from_str::<Config>(&config_file) {
+    Ok(el) => Ok(el),
+    Err(err) => bail!(
+      "{} could not be parsed as a config file. Cause: {}",
+      path.display(),
+      err
+    ),
+  }
 }
 
 fn find_root_dir(start_dir: &Path, dir: &str) -> Result<PathBuf> {
   let dir = start_dir.join(dir);
-  let dir = dir
-    .canonicalize()
-    .context(format!("{} is not a valid path", dir.display()))?;
+  let dir = dir.clean();
   if !dir.is_dir() {
     bail!("{} is not a directory.", dir.display());
   }
@@ -142,138 +199,154 @@ fn find_root_dir(start_dir: &Path, dir: &str) -> Result<PathBuf> {
   Ok(dir)
 }
 
-fn find_output_dir(config_dir: &Path, output_dir: &Option<String>) -> Result<PathBuf> {
-  const DEFAULT_OUTPUT_DIR: &str = "output";
+fn use_dir(dir: &Path) -> Result<()> {
+  match env::set_current_dir(&dir) {
+    Ok(_) => Ok(()),
+    Err(_) => {
+      bail!("Could not change to directory {}", dir.display())
+    }
+  }
+}
 
-  let output_dir = match output_dir {
-    Some(output_dir) => output_dir,
-    None => DEFAULT_OUTPUT_DIR,
-  };
-  let output_dir = config_dir.join(output_dir);
-  let output_dir = output_dir
-    .canonicalize()
-    .context(format!("{} is not a valid path", output_dir.display()))?;
+fn create_output_dir(config_dir: &Path, output_dir: &str) -> Result<PathBuf> {
+  let output_dir = config_dir.join(output_dir).clean();
 
   if output_dir.is_dir() {
     println!("Output directory found {}", output_dir.display());
     Ok(output_dir)
   } else {
     println!("Creating output directory  {}", output_dir.display());
-    match fs::create_dir_all(&output_dir).context(format!(
-      "Output directory {} could not be created",
-      output_dir.display()
-    )) {
-      Ok(()) => Ok(output_dir),
-      Err(err) => Err(err),
+    match fs::create_dir_all(&output_dir) {
+      Err(err) => bail!(
+        "Output directory {} could not be created. Cause: {}",
+        output_dir.display(),
+        err
+      ),
+      Ok(_) => Ok(output_dir),
     }
   }
 }
 
-fn find_files(glob_patterns: &[String]) -> Vec<PathBuf> {
-  glob_patterns
+fn expand_glob(glob_patterns: &[String], excluded_paths: &mut Vec<PathBuf>) -> Vec<PathBuf> {
+  let found_paths = glob_patterns
     .iter()
-    .flat_map(|pattern| {
-      glob(pattern)
-        .map_err(|err| println!("{} is not a valid glob pattern. Cause: {}", pattern, err))
-        .unwrap()
+    .filter_map(|pattern| match glob(pattern) {
+      Ok(paths) => Some(
+        paths
+          .filter_map(move |item| match item {
+            Ok(val) => Some(val),
+            Err(err) => {
+              println!("Globbed path could not be read. Cause: {}", err);
+              None
+            }
+          })
+          .collect::<Vec<PathBuf>>(),
+      ),
+      Err(err) => {
+        println!("{} is not a valid glob pattern. Cause: {}", pattern, err);
+        None
+      }
     })
-    .map(|path| {
-      path
-        .map_err(|err| {
-          println!(
-            "Globbed path {} could not be read. Cause: {}",
-            err.path().display(),
-            err
-          )
-        })
-        .unwrap()
-    })
+    .flatten()
     .unique()
-    .collect()
+    .sorted();
+
+  // Remove excluded paths from the results.
+  let mut excluded_paths_iter = excluded_paths.iter();
+  let mut excluded_path = excluded_paths_iter.next();
+  let found_paths: Vec<PathBuf> = found_paths
+    .filter(|path| loop {
+      if excluded_path.is_none() || path < excluded_path.unwrap() {
+        break true;
+      } else if path == excluded_path.unwrap() {
+        excluded_path = excluded_paths_iter.next();
+        break false;
+      } else {
+        excluded_path = excluded_paths_iter.next();
+      }
+    })
+    .collect();
+
+  // Add the results to the excluded set to prevent them from being processed again.
+  excluded_paths.append(&mut found_paths.clone());
+  excluded_paths.sort();
+  found_paths
 }
 
-fn read_template_files(template_paths: &[PathBuf]) -> HashMap<String, Template> {
+fn load_templates(template_paths: &[PathBuf]) -> HashMap<String, Template> {
   let mut templates = HashMap::<String, Template>::new();
 
   for template_path in template_paths {
     println!("- Reading {}", template_path.display());
-    let element = match read_xml_file(template_path) {
-      Ok(element) => element,
+
+    let template = match load_template(template_path, &templates) {
+      Ok(template) => template,
       Err(err) => {
         println!("-- {}", err);
-        break;
+        continue;
       }
     };
 
-    let name = match element.attr("oeuvre-name") {
-      None => {
-        println!(
-          "-- {} requires a root element with an oeuvre-name attribute",
-          template_path.display()
-        );
-        break;
-      }
-      Some(attr_value) => attr_value,
-    }
-    .to_string();
-    if templates.contains_key(&name) {
-      println!(
-        "-- {} has the oeuvre-name attribute value {}, which is already in use by another template",
-        template_path.display(),
-        name
-      );
-      break;
-    }
-
-    let template = Template { element, name };
-
     println!(
-      "- Loaded template {} as {}",
+      "-- Loaded template {} from {}",
+      template.name,
       template_path.display(),
-      template.name
     );
     templates.insert(template.name.clone(), template);
   }
   templates
 }
 
-fn read_xml_file(path: &Path) -> Result<Element> {
-  let template_text =
-    fs::read_to_string(&path).context(format!("{} could not be opened", path.display()))?;
-
-  template_text
-    .parse::<Element>()
-    .context(format!("{} could not be parsed as xml", path.display()))
+fn load_template(template_path: &Path, templates: &HashMap<String, Template>) -> Result<Template> {
+  let element = load_xml(template_path)?;
+  Template::new(element, templates)
 }
 
-fn read_page_files(page_paths: &[PathBuf]) -> HashMap<String, Page> {
+fn load_xml(path: &Path) -> Result<Element> {
+  let template_text = match fs::read_to_string(&path) {
+    Ok(text) => text,
+    Err(err) => bail!("{} could not be opened. Cause: {}", path.display(), err),
+  };
+
+  match template_text.parse::<Element>() {
+    Ok(el) => Ok(el),
+    Err(err) => bail!(
+      "{} could not be parsed as xml. Cause: {}",
+      path.display(),
+      err
+    ),
+  }
+}
+
+fn load_pages(page_paths: &[PathBuf]) -> HashMap<String, Page> {
   let mut pages = HashMap::<String, Page>::new();
 
   for page_path in page_paths {
-    println!("- Reading {}", page_path.display());
-    let element = match read_xml_file(page_path) {
-      Ok(element) => element,
-      Err(err) => {
-        println!("-- {}", err);
-        break;
-      }
-    };
-
-    let page = match Page::new(element, page_path) {
+    println!("- Loading page {}", page_path.display());
+    let page = match load_page(page_path) {
       Ok(page) => page,
       Err(err) => {
-        println!("{}", err);
-        break;
+        println!("-- {}", err);
+        continue;
       }
     };
 
-    println!("- Loaded page {}", page_path.display());
+    println!("-- Loaded page {}", page_path.display());
     pages.insert(page.path.clone(), page);
   }
   pages
 }
 
-fn write_pages(pages: &HashMap<String, Page>, templates: &HashMap<String, Template>, output_dir: &Path) {
+fn load_page(page_path: &Path) -> Result<Page> {
+  let element = load_xml(page_path)?;
+  Page::new(element, page_path)
+}
+
+fn write_pages(
+  pages: &HashMap<String, Page>,
+  templates: &HashMap<String, Template>,
+  output_dir: &Path,
+) {
   const DOCTYPE_HEADER: &str = "<!DOCTYPE html>\r\n";
 
   for page in pages.values() {
@@ -285,7 +358,10 @@ fn write_pages(pages: &HashMap<String, Page>, templates: &HashMap<String, Templa
         continue;
       }
     };
-    match fs::write(output_dir.join(&page.path), format!("{}{}", DOCTYPE_HEADER, rendered)) {
+    match fs::write(
+      output_dir.join(&page.path),
+      format!("{}{}", DOCTYPE_HEADER, rendered),
+    ) {
       Ok(()) => (),
       Err(err) => {
         println!("Failed to write page {}. Cause: {}", &page.path, err);
@@ -300,7 +376,7 @@ fn render_page(page: &Page, templates: &HashMap<String, Template>) -> Result<Str
     Some(template) => template,
     None => {
       bail!(
-        "Page `{}` requested template `{}`, which could not be found",
+        "Page `{}` requested template `{}`, which does not exist",
         page.path,
         page.template
       );
@@ -321,32 +397,33 @@ fn fill_slots(template: &Element, slot_values: &HashMap<String, Element>) -> Ele
   for node in template.nodes() {
     match node.as_element() {
       None => result.append_node(node.clone()),
-      Some(element) => {
-        if !element.name().starts_with("oeuvre-") {
-          result.append_child(fill_slots(element, slot_values));
-        } else if element.name() == "oeuvre-slot" {
-          match element.attr("name") {
+      Some(element) => match element.name() {
+        "oeuvre-slot" => match element.attr("name") {
+          None => continue,
+          Some(slot_name) => match slot_values.get(slot_name) {
             None => continue,
-            Some(slot_name) => match slot_values.get(slot_name) {
-              None => continue,
-              Some(slot_value) => {
-                if slot_value.name() == "oeuvre-fragment" {
-                  for fragment_child in slot_value.nodes() {
-                    match fragment_child.as_element() {
-                      None => result.append_node(fragment_child.clone()),
-                      Some(fragment_child) => {
-                        result.append_child(fill_slots(fragment_child, slot_values));
-                      }
-                    };
-                  }
-                } else {
-                  result.append_child(fill_slots(slot_value, slot_values));
+            Some(slot_value) => match slot_value.name() {
+              "oeuvre-fragment" => {
+                for fragment_child in slot_value.nodes() {
+                  match fragment_child.as_element() {
+                    None => result.append_node(fragment_child.clone()),
+                    Some(fragment_child) => {
+                      result.append_child(fill_slots(fragment_child, slot_values));
+                    }
+                  };
                 }
               }
+              _ => {
+                result.append_child(fill_slots(slot_value, slot_values));
+              }
             },
-          }
+          },
+        },
+        name if name.starts_with("oeuvre-") => {}
+        _ => {
+          result.append_child(fill_slots(element, slot_values));
         }
-      }
+      },
     };
   }
   result
