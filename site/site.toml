@@ -1,3 +1,5 @@
 dir = "./"
-templates = ["templates/**/*.html"] # TODO: reserve paths in this order
+templates = ["templates/**/*.html"]
+snippets = ["snippets/**/*.html"]
 pages = ["**/*.html"]
+content = ["content/**"]

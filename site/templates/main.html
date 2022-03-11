@@ -3,13 +3,14 @@
 <!-- Comment! -->
 <head>
   <title>
-    <oeuvre-slot name="title" />
+    <oeuvre-slot oeuvre-name="title" />
   </title>
 </head>
 
 <body>
   <main>
-    <oeuvre-slot name="contents" />
+    <oeuvre-include oeuvre-snippet="header"/>
+    <oeuvre-slot oeuvre-name="contents" />
   </main>
 </body>
 
