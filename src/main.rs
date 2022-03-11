@@ -26,6 +26,8 @@ struct Config {
   snippets: Vec<String>,
   #[serde(default = "Config::default_pages")]
   pages: Vec<String>,
+  #[serde(default = "Config::default_content")]
+  content: Vec<String>,
 }
 
 impl Config {
@@ -46,6 +48,9 @@ impl Config {
   }
   fn default_pages() -> Vec<String> {
     ["**/*.html".to_string()].to_vec()
+  }
+  fn default_content() -> Vec<String> {
+    ["content/**".to_string()].to_vec()
   }
 
   fn load(path: &Path) -> Result<Config> {
@@ -225,6 +230,12 @@ fn main() -> Result<()> {
 
   println!("Reading pages");
   let pages = load_pages(&page_paths);
+
+  println!("Looking for content {:?}", config.pages);
+  let content_paths = expand_glob(&config.content, &mut exclude);
+
+  println!("Copying content");
+  copy_content(&content_paths, &output_dir);
 
   println!("Writing pages");
   write_pages(&pages, &templates, &snippets, &output_dir);
@@ -523,5 +534,22 @@ fn unwrap_fragment(
         target.append_child(fill_slots(fragment_child, slot_values, snippets));
       }
     };
+  }
+}
+
+fn copy_content(paths: &[PathBuf], output_dir: &Path) {
+  for path in paths {
+    println!("- Copying file {}", path.display());
+    let dir = path.parent().unwrap();
+    if let Err(err) = fs::create_dir_all(output_dir.join(dir)) {
+      println!("-- {}", err);
+      continue;
+    };
+    if let Err(err) = fs::copy(path, output_dir.join(path)) {
+      println!("-- {}", err);
+      continue;
+    };
+
+    println!("-- Copied file {}", path.display());
   }
 }

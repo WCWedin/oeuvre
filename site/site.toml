@@ -2,4 +2,4 @@ dir = "./"
 templates = ["templates/**/*.html"]
 snippets = ["snippets/**/*.html"]
 pages = ["**/*.html"]
-content = ["content/**"]
+content = ["content/**/*"]
