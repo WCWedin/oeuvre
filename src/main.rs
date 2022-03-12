@@ -3,6 +3,7 @@ mod minidom;
 use anyhow::{bail, Result};
 use glob::glob;
 use itertools::Itertools;
+use log::error;
 use minidom::Element;
 use path_clean::PathClean;
 use serde_derive::Deserialize;
@@ -206,7 +207,7 @@ fn main() -> Result<()> {
 
   // Set up excluded paths collection.
   let mut exclude = Vec::<PathBuf>::new();
-  exclude = expand_glob(&config.exclude, &mut exclude);
+  expand_glob(&config.exclude, &mut exclude);
 
   println!("Looking for output directory");
   let output_dir = create_output_dir(config_dir, &config.output_dir)?;
@@ -243,7 +244,8 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-/// Finds the root path to the config file in one of the following places or otherwise returns an `Err`:
+/// Finds the root path to the config file in one of the following places,
+/// or otherwise returns an `Err`:
 /// - `input_path` if `input_path` corresponds to a file
 /// - `input_path`/site.toml if `input_path` corresponds to a directory
 /// - `"./site.toml"` if `input_path` is `None` and `"./site.toml"` corresponds to a file
@@ -468,52 +470,30 @@ fn render_page(
       );
     }
   };
-  let result = fill_slots(&template.element, &page.slot_values, snippets);
+  let result = render_template(&template.element, &page.slot_values, snippets);
   Ok(String::from(&result))
 }
 
-fn fill_slots(
-  template: &Element,
+fn render_template(
+  template_element: &Element,
   slot_values: &HashMap<String, Element>,
   snippets: &HashMap<String, Snippet>,
 ) -> Element {
-  let mut result = Element::bare(template.name(), template.ns());
-  for attr in template
-    .attrs()
-    .filter(|attr| !attr.0.starts_with("oeuvre-"))
-  {
-    result.set_attr(attr.0, attr.1);
-  }
-  for node in template.nodes() {
+  let mut result = initialize_element(template_element);
+
+  // Non-element child nodes are emitted unmodified. Oeuvre elements recieve
+  // special handling, but all other elements are emitted unmodified.
+  for node in template_element.nodes() {
     match node.as_element() {
       None => result.append_node(node.clone()),
       Some(element) => match element.name() {
-        "oeuvre-include" => match element.attr("oeuvre-snippet") {
-          None => continue,
-          Some(include_name) => match snippets.get(include_name) {
-            None => continue,
-            Some(include_value) => {
-              unwrap_fragment(&include_value.element, &mut result, slot_values, snippets);
-            }
-          },
-        },
-        "oeuvre-slot" => match element.attr("oeuvre-name") {
-          None => continue,
-          Some(slot_name) => match slot_values.get(slot_name) {
-            None => continue,
-            Some(slot_value) => match slot_value.name() {
-              "oeuvre-fragment" => {
-                unwrap_fragment(slot_value, &mut result, slot_values, snippets);
-              }
-              _ => {
-                result.append_child(fill_slots(slot_value, slot_values, snippets));
-              }
-            },
-          },
-        },
-        name if name.starts_with("oeuvre-") => {}
+        "oeuvre-include" => render_include(&element, &mut result, slot_values, snippets),
+        "oeuvre-slot" => render_slot(&element, &mut result, slot_values, snippets),
+        name if name.starts_with("oeuvre-") => {
+          error!("Unknown oeuvre element found: {}", name);
+        }
         _ => {
-          result.append_child(fill_slots(element, slot_values, snippets));
+          append_element(element, &mut result, slot_values, snippets);
         }
       },
     };
@@ -521,6 +501,82 @@ fn fill_slots(
   result
 }
 
+/// Creates a new element, copying the name and attributes of the 
+/// template element – though oeuvre attributes will be omitted.
+fn initialize_element(template_element: &Element) -> Element {
+  let mut result = Element::bare(template_element.name(), template_element.ns());
+  for attr in template_element
+    .attrs()
+    .filter(|attr| !attr.0.starts_with("oeuvre-"))
+  {
+    result.set_attr(attr.0, attr.1);
+  }
+  result
+}
+
+/// An oeuvre-include element will render the snippet named
+/// in its oeuvre-snippet attribute, or its own contents
+/// if no such snippet exists. The attribute must be present;
+/// otherwise, this function will log an error, render no content
+/// for this element, and then continue rendering further elements.
+fn render_include(
+  element: &Element,
+  target: &mut Element,
+  slot_values: &HashMap<String, Element>,
+  snippets: &HashMap<String, Snippet>,
+) {
+  match element.attr("oeuvre-snippet") {
+    Some(snippet_name) => match snippets.get(snippet_name) {
+      Some(snippet) => unwrap_fragment(&snippet.element, target, slot_values, snippets),
+      None => unwrap_fragment(&element, target, slot_values, snippets),
+    },
+    None => {
+      error!("Found an oeuvre-include element without a target oeuvre-snippet attribute.")
+    }
+  }
+}
+
+/// An oeuvre-slot element will render the element or fragement
+/// provided by the oeuvre-page document being rendered, or its
+/// own contents if no such element or fragment exists. The attribute
+/// must be present; otherwise, this function will log and error,
+/// render no content for this element, and then continue rendering
+/// further elements.
+fn render_slot(
+  element: &Element,
+  target: &mut Element,
+  slot_values: &HashMap<String, Element>,
+  snippets: &HashMap<String, Snippet>,
+) {
+  match element.attr("oeuvre-name") {
+    Some(slot_name) => match slot_values.get(slot_name) {
+      Some(slot_value) => match slot_value.name() {
+        "oeuvre-fragment" => unwrap_fragment(slot_value, target, slot_values, snippets),
+        _ => append_element(slot_value, target, slot_values, snippets),
+      },
+      None => unwrap_fragment(&element, target, slot_values, snippets),
+    },
+    None => {
+      error!("Found an oeuvre-slot element without an identifying oeuvre-name attribute.")
+    }
+  }
+}
+
+/// Performs template expansion on the provided element and
+/// appends the result to `target`.
+fn append_element(
+  element: &Element,
+  target: &mut Element,
+  slot_values: &HashMap<String, Element>,
+  snippets: &HashMap<String, Snippet>,
+) {
+  target.append_child(render_template(element, slot_values, snippets));
+}
+
+/// Performs template expansion on the children of the provided element and
+/// appends the results to `target`. This is used to enable syntax for providing
+/// HTML fragments as slot values (oeuvre-fragment) and for appending the
+/// fallback content provided by unmatched slots and includes.
 fn unwrap_fragment(
   fragment: &Element,
   target: &mut Element,
@@ -531,12 +587,13 @@ fn unwrap_fragment(
     match fragment_child.as_element() {
       None => target.append_node(fragment_child.clone()),
       Some(fragment_child) => {
-        target.append_child(fill_slots(fragment_child, slot_values, snippets));
+        target.append_child(render_template(fragment_child, slot_values, snippets));
       }
     };
   }
 }
 
+/// Copies the site's static content files to the output directory.
 fn copy_content(paths: &[PathBuf], output_dir: &Path) {
   for path in paths {
     println!("- Copying file {}", path.display());
