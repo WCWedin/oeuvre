@@ -1,5 +1,14 @@
+# The input directory, relative to this file's path.
 dir = "./"
+# The output directory, relative to the input directory.
+output_dir = "output/"
+# Glob patterns for files in the input directory that should be ignored.
+exclude = []
+# Glob patterns for template files.
 templates = ["templates/**/*.html"]
+# Glob patterns for snipppet files.
 snippets = ["snippets/**/*.html"]
+# Glob patterns for page files.
 pages = ["**/*.html"]
+# Glob patterns for static content files.
 content = ["content/**/*"]
