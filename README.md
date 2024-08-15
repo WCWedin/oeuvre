@@ -21,7 +21,7 @@ pages = ["**/*.html"]
 content = ["content/**/*"]
 ```
 
-The output is a single HTML file for each, page plus all of the static content, using the directory structure of the input directory.
+The output is a single HTML file for each page, plus all of the static content, using the directory structure of the input directory.
 
 ## The Future
 

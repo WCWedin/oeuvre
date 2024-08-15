@@ -75,7 +75,6 @@
 //! minidom = "*"
 //! ```
 
-pub use quick_xml;
 
 pub mod convert;
 pub mod element;
@@ -87,8 +86,4 @@ mod prefixes;
 #[cfg(test)]
 mod tests;
 
-pub use convert::IntoAttributeValue;
-pub use element::{Children, ChildrenMut, Element, ElementBuilder};
-pub use error::{Error, Result};
-pub use namespaces::NSChoice;
-pub use node::Node;
+pub use element::Element;
