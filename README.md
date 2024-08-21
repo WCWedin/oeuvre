@@ -17,11 +17,11 @@ templates = ["templates/**/*.html"]
 snippets = ["snippets/**/*.html"]
 # Glob patterns for page files.
 pages = ["**/*.html"]
-# Glob patterns for static content files.
-content = ["content/**/*"]
+# Glob patterns for static assets files.
+assets = ["assets/**/*"]
 ```
 
-The output is a single HTML file for each page, plus all of the static content, using the directory structure of the input directory.
+The output is a single HTML file for each page, plus all of the static assets, using the directory structure of the input directory.
 
 ## The Future
 

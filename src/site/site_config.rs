@@ -20,8 +20,8 @@ pub struct SiteConfig {
   pub snippets: Vec<String>,
   #[serde(default = "SiteConfig::default_pages")]
   pub pages: Vec<String>,
-  #[serde(default = "SiteConfig::default_content")]
-  pub content: Vec<String>,
+  #[serde(default = "SiteConfig::default_assets")]
+  pub assets: Vec<String>,
 }
 
 impl SiteConfig {
@@ -43,8 +43,8 @@ impl SiteConfig {
   fn default_pages() -> Vec<String> {
     ["**/*.html".to_string()].to_vec()
   }
-  fn default_content() -> Vec<String> {
-    ["content/**".to_string()].to_vec()
+  fn default_assets() -> Vec<String> {
+    ["assets/**".to_string()].to_vec()
   }
 
   /// Deserializes the toml file at the given path into a SiteConfig,

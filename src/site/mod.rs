@@ -66,8 +66,8 @@ impl Site {
     info!("Reading pages");
     let pages = Page::load_many(&page_paths);
 
-    info!("Looking for content {:?}", config.pages);
-    let content_paths = Site::expand_glob(&config.content, &mut excluded_paths);
+    info!("Looking for assets {:?}", config.pages);
+    let content_paths = Site::expand_glob(&config.assets, &mut excluded_paths);
 
     Ok(Site {
       pages,
@@ -80,8 +80,8 @@ impl Site {
 
   /// Renders the site and writes the output to disk.
   pub fn render(&self) -> Result<()> {
-    info!("Copying content");
-    self.copy_content();
+    info!("Copying assets");
+    self.copy_assets();
     info!("Writing pages");
     Page::write_many(self);
 
@@ -173,8 +173,8 @@ impl Site {
     }
   }
 
-  /// Copies the site's static content files to the output directory.
-  fn copy_content(&self) {
+  /// Copies the site's static assets files to the output directory.
+  fn copy_assets(&self) {
     for path in &self.content_paths {
       info!("- Copying file {}", path.display());
       let dir = path.parent().unwrap();
