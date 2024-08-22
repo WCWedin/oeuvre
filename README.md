@@ -17,6 +17,8 @@ templates = ["templates/**/*.html"]
 snippets = ["snippets/**/*.html"]
 # Glob patterns for page files.
 pages = ["**/*.html"]
+# Glob patterns for table files.
+tables = ["tables/**/*.html"]
 # Glob patterns for static assets files.
 assets = ["assets/**/*"]
 ```

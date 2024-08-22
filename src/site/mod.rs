@@ -66,6 +66,11 @@ impl Site {
     info!("Reading pages");
     let pages = Page::load_many(&page_paths);
 
+    info!("Looking for tables {:?}", config.tables);
+    let table_paths = Site::expand_glob(&config.tables, &mut excluded_paths);
+    info!("Reading tables");
+    let tables = Table::load_many(&table_paths);
+
     info!("Looking for assets {:?}", config.pages);
     let content_paths = Site::expand_glob(&config.assets, &mut excluded_paths);
 

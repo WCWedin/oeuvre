@@ -20,6 +20,8 @@ pub struct SiteConfig {
   pub snippets: Vec<String>,
   #[serde(default = "SiteConfig::default_pages")]
   pub pages: Vec<String>,
+  #[serde(default = "SiteConfig::default_tables")]
+  pub tables: Vec<String>,
   #[serde(default = "SiteConfig::default_assets")]
   pub assets: Vec<String>,
 }
@@ -42,6 +44,9 @@ impl SiteConfig {
   }
   fn default_pages() -> Vec<String> {
     ["**/*.html".to_string()].to_vec()
+  }
+  fn default_tables() -> Vec<String> {
+    ["tables/**/*.html".to_string()].to_vec()
   }
   fn default_assets() -> Vec<String> {
     ["assets/**".to_string()].to_vec()
