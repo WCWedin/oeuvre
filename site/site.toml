@@ -5,12 +5,14 @@ output_dir = "output/"
 # Glob patterns for files in the input directory that should be ignored.
 exclude = []
 # Glob patterns for template files.
-templates = ["templates/**/*.html"]
+templates = ["templates/**/*.xml"]
 # Glob patterns for snipppet files.
-snippets = ["snippets/**/*.html"]
+snippets = ["snippets/**/*.xml"]
+# Glob patterns for dataset files.
+datasets = ["data/*.xml"]
+# Glob patterns for data row files.
+datarows = ["data/*/**/*.xml"]
 # Glob patterns for page files.
-pages = ["**/*.html"]
-# Glob patterns for table files.
-tables = ["tables/**/*.html"]
+pages = ["**/*.xml"]
 # Glob patterns for static assets files.
 assets = ["assets/**/*"]

@@ -17,6 +17,8 @@ mod template;
 use template::Template;
 mod snippet;
 use snippet::Snippet;
+mod dataset;
+use dataset::Dataset;
 mod site_config;
 pub use site_config::SiteConfig;
 mod render;
@@ -27,6 +29,7 @@ pub struct Site {
   pub pages: HashMap<String, Page>,
   pub templates: HashMap<String, Template>,
   pub snippets: HashMap<String, Snippet>,
+  pub datasets: HashMap<String, Dataset>,
   pub content_paths: Vec<PathBuf>,
   pub output_dir: PathBuf,
 }
@@ -61,23 +64,29 @@ impl Site {
     info!("Reading templates");
     let snippets = Snippet::load_many(&snippet_paths);
 
+    info!("Looking for datasets {:?}", config.datasets);
+    let dataset_paths = Site::expand_glob(&config.datasets, &mut excluded_paths);
+    info!("Reading datasets");
+    let datasets = Dataset::load_many(&dataset_paths);
+
+    info!("Looking for data rows {:?}", config.datasets);
+    let datarow_paths = Site::expand_glob(&config.datarows, &mut excluded_paths);
+    info!("Reading data rows");
+    Dataset::load_rows(&datarow_paths, &datasets);
+
+    info!("Looking for assets {:?}", config.pages);
+    let content_paths = Site::expand_glob(&config.assets, &mut excluded_paths);
+
     info!("Looking for pages {:?}", config.pages);
     let page_paths = Site::expand_glob(&config.pages, &mut excluded_paths);
     info!("Reading pages");
     let pages = Page::load_many(&page_paths);
 
-    info!("Looking for tables {:?}", config.tables);
-    let table_paths = Site::expand_glob(&config.tables, &mut excluded_paths);
-    info!("Reading tables");
-    let tables = Table::load_many(&table_paths);
-
-    info!("Looking for assets {:?}", config.pages);
-    let content_paths = Site::expand_glob(&config.assets, &mut excluded_paths);
-
     Ok(Site {
       pages,
       templates,
       snippets,
+      datasets,
       content_paths,
       output_dir,
     })

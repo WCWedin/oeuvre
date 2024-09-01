@@ -18,12 +18,14 @@ pub struct SiteConfig {
   pub templates: Vec<String>,
   #[serde(default = "SiteConfig::default_snippets")]
   pub snippets: Vec<String>,
-  #[serde(default = "SiteConfig::default_pages")]
-  pub pages: Vec<String>,
-  #[serde(default = "SiteConfig::default_tables")]
-  pub tables: Vec<String>,
+  #[serde(default = "SiteConfig::default_datasets")]
+  pub datasets: Vec<String>,
+  #[serde(default = "SiteConfig::default_datarows")]
+  pub datarows: Vec<String>,
   #[serde(default = "SiteConfig::default_assets")]
   pub assets: Vec<String>,
+  #[serde(default = "SiteConfig::default_pages")]
+  pub pages: Vec<String>,
 }
 
 impl SiteConfig {
@@ -37,19 +39,22 @@ impl SiteConfig {
     Vec::new()
   }
   fn default_templates() -> Vec<String> {
-    ["templates/**/*.html".to_string()].to_vec()
+    ["templates/**/*.xml".to_string()].to_vec()
   }
   fn default_snippets() -> Vec<String> {
-    ["snippets/**/*.html".to_string()].to_vec()
+    ["snippets/**/*.xml".to_string()].to_vec()
   }
-  fn default_pages() -> Vec<String> {
-    ["**/*.html".to_string()].to_vec()
+  fn default_datasets() -> Vec<String> {
+    ["data/*.xml".to_string()].to_vec()
   }
-  fn default_tables() -> Vec<String> {
-    ["tables/**/*.html".to_string()].to_vec()
+  fn default_datarows() -> Vec<String> {
+    ["data/*/**/*.xml".to_string()].to_vec()
   }
   fn default_assets() -> Vec<String> {
     ["assets/**".to_string()].to_vec()
+  }
+  fn default_pages() -> Vec<String> {
+    ["**/*.xml".to_string()].to_vec()
   }
 
   /// Deserializes the toml file at the given path into a SiteConfig,
