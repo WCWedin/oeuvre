@@ -1,10 +1,6 @@
 <oeuvre-dataset oeuvre-name="events">
-    <oeuvre-field oeuvre-name="date" oeuvre-type="date" oeuvre-required="true"/>
+    <oeuvre-field oeuvre-name="date" oeuvre-type="string" oeuvre-required="true"/>
     <oeuvre-field oeuvre-name="description" oeuvre-type="fragment">
         <p>A description.</p>
     </oeuvre-field>
 </oeuvre-dataset>
-
-<oeuvre-datarow oeuvre-dataset="events">
-    <oevure-value oeuvre-field="date">2024-01-01</oevure-value>
-</oeuvre-datarow>

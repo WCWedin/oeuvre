@@ -6,10 +6,27 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-/// A set of structure data.
+pub enum FieldType {
+  String,
+  Fragment,
+}
+
+pub enum FieldValue {
+  String(String),
+  Fragment(Element),
+}
+
+pub struct Field {
+  pub name: String,
+  pub required: bool,
+  pub field_type: FieldType,
+  pub default: Option<FieldValue>,
+}
+
+/// A set of structured data.
 pub struct Dataset {
-    pub element: Element,
     pub name: String,
+    pub fields: HashMap<String, Field>,
 }
 
 impl Dataset {
@@ -18,18 +35,69 @@ impl Dataset {
       None => {
         bail!("Dataset requires a root element with an oeuvre-name attribute");
       }
-      Some(attr_value) => attr_value,
+      Some(attr_value) => attr_value
     }
     .to_string();
 
     if datasets.contains_key(&name) {
       bail!(
-      "Dataset has the oeuvre-name attribute value {}, which is already in use by another dataset",
-      name
-    );
+        "Dataset has the oeuvre-name attribute value {}, which is already in use by another dataset",
+        name
+      );
     }
 
-    Ok(Dataset { element, name })
+    let mut fields = HashMap::<String, Field>::new();
+
+    for child in element.children() {
+      let field_name = child.attr("oeuvre-name");
+      let field_name = match child.attr("oeuvre-name") {
+        None => {
+          error!("Data field requires an oeuvre-name attribute");
+          continue;
+        }
+        Some(attr_value) => attr_value.to_string()
+      };
+
+      if fields.contains_key(&field_name) {
+        error!(
+          "Data field has the oeuvre-name attribute value {}, which is already in use by another field",
+          name
+        );
+        continue;
+      }
+
+      let required = match child.attr("oeuvre-required") {
+        Some(attr_value) => match attr_value.parse() {
+          Ok(parsed_value) => parsed_value,
+          Err(err) => {
+            error!("-- {}", err);
+            continue;
+          }
+        },
+        None => false
+      };
+
+      let field_type = match child.attr("oeuvre-type") {
+        None => {
+          error!("Data field requires an oeuvre-type attribute");
+          continue;
+        }
+        Some("string") => FieldType::String,
+        Some("fragment") => FieldType::Fragment,
+        Some(attr_value) => {
+          error!("Data field has invalue oeuvre-type value {}", attr_value);
+          continue;
+        }
+      };
+      
+      fields.insert(field_name.clone(), Field {
+        name: field_name,
+        required,
+        field_type,
+      });
+    }
+
+    Ok(Dataset { name, fields })
   }
 
   fn load(path: &Path, datasets: &HashMap<String, Dataset>) -> Result<Dataset> {
