@@ -6,6 +6,7 @@ use log::{error, info};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use path_clean::PathClean;
 
 use super::Snippet;
 use super::Template;
@@ -15,18 +16,25 @@ use super::render::render_template;
 /// A single page, as represented by its target template and associated slot values.
 /// Each page will render a single XML document to disk.
 pub struct Page {
-  path: String,
+  path: PathBuf,
   template: String,
   slot_values: HashMap<String, Element>,
 }
 
 impl Page {
-  fn new(element: Element, path: &Path) -> Result<Page> {
+  fn new(element: Element, input_path: &Path) -> Result<Page> {
     let template = match element.attr("oeuvre-template") {
-      Some(attr_value) => attr_value,
-      None => bail!("Page requires a root element with an oeuvre-template attribute",),
-    }
-    .to_string();
+      Some(attr_value) => attr_value.to_string(),
+      None => bail!("Page requires a root element with an oeuvre-template attribute"),
+    };
+
+    let output_path = match element.attr("oeuvre-path") {
+      Some(attr_value) => {
+        if attr_value.starts_with('/') { PathBuf::from(attr_value[1..].to_string()) }
+        else { input_path.parent().unwrap().join(attr_value) }
+      },
+      None => input_path.to_path_buf()
+    };
 
     let mut slot_values: HashMap<String, Element> = HashMap::new();
     for child in element.children() {
@@ -39,7 +47,7 @@ impl Page {
     }
 
     Ok(Page {
-      path: path.display().to_string(),
+      path: output_path,
       template,
       slot_values,
     })
@@ -64,7 +72,7 @@ impl Page {
         }
       };
       info!("-- Loaded page {}", page_path.display());
-      pages.insert(page.path.clone(), page);
+      pages.insert(page.path.display().to_string(), page);
     }
     pages
   }
@@ -79,7 +87,7 @@ impl Page {
       None => {
         bail!(
           "Page `{}` requested template `{}`, which does not exist",
-          self.path,
+          self.path.display(),
           self.template
         );
       }
@@ -96,13 +104,19 @@ impl Page {
     let rendered = match self.render(&site.templates, &site.snippets) {
       Ok(rendered_page) => rendered_page,
       Err(err) => {
-        bail!("Failed to render page {}. Cause: {}", &self.path, err);
+        bail!("Failed to render page {}. Cause: {}", &self.path.display(), err);
       }
     };
-    match fs::write(&site.output_dir.join(&self.path), format!("{}{}", DOCTYPE_HEADER, rendered)) {
+
+    let output_path = &site.output_dir.join(&self.path).clean();
+    if let Err(err) = fs::create_dir_all(output_path.parent().unwrap()) {
+      error!("-- {}", err);
+    };
+
+    match fs::write(output_path, format!("{}{}", DOCTYPE_HEADER, rendered)) {
       Ok(_) => Ok(()),
       Err(err) => {
-        bail!("Failed to write page {}. Cause: {}", &self.path, err);
+        bail!("Failed to write page {}. Cause: {}", &self.path.display(), err);
       }
     }
   }
@@ -110,12 +124,12 @@ impl Page {
   /// Writes all of a site's pages to disk.
   pub fn write_many(site: &Site) {
     for page in site.pages.values() {
-      info!("- Writing page {}", &page.path);
+      info!("- Writing page {}", &page.path.display());
       if let Err(err) = page.write(site) {
         error!("-- {}", err);
         continue;
       };
-      info!("-- Wrote page {}", &page.path);
+      info!("-- Wrote page {}", &page.path.display());
     }
   }
 }

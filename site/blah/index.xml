@@ -1,4 +1,4 @@
-<oeuvre-page oeuvre-template="test" oeuvre-path="index.html">
+<oeuvre-page oeuvre-template="test" oeuvre-path="/ggg/index2.html">
   <oeuvre-fragment oeuvre-slot="title">This Title</oeuvre-fragment>
   <p oeuvre-slot="contents">
     Boo!

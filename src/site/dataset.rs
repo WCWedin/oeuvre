@@ -1,10 +1,10 @@
 use super::load_xml;
 use crate::minidom::Element;
-use crate::PathBuf;
 use anyhow::{bail, Result};
 use log::{error, info};
 use std::collections::HashMap;
 use std::path::Path;
+use std::path::PathBuf;
 
 /// A set of structure data.
 pub struct Dataset {
